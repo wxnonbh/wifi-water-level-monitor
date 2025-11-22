@@ -1,0 +1,199 @@
+/*
+  Wi-Fi Water Level Monitor - Firmware
+  Hardware: Custom KiCad PCB (ESP-12F)
+  Logic: Monitors a float switch (GPIO14) and triggers a buzzer (GPIO13)
+         when the water level is LOW (sensor reads LOW).
+*/
+
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h> // New library for making HTTP requests
+
+// --- Configuration: Wi-Fi & IFTTT ---
+// Replace with your Wi-Fi credentials
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// IFTTT Webhooks Configuration
+// 1. Your unique IFTTT Key (found in the Webhooks documentation)
+const char* IFTTT_KEY = "YOUR_IFTTT_WEBHOOK_KEY_HERE";
+// 2. The event name you created in your IFTTT Applet (e.g., "water_level_low")
+const char* IFTTT_EVENT_NAME = "water_level_low";
+// Base URL for the IFTTT Webhook service
+const String IFTTT_URL_BASE = "http://maker.ifttt.com/trigger/";
+
+// --- Hardware Pin Definitions (Based on PCB) ---
+// GPIO14 is the sensor input (J1). Pull-up R1 makes it HIGH when sensor is open/water present.
+// Sensor pulls it LOW when activated (e.g., water level drops).
+const int SENSOR_PIN = 14;
+
+// GPIO13 controls the NPN transistor (Q1) that drives the buzzer (BZ1).
+const int BUZZER_PIN = 13;
+
+// --- State Variables & Debouncing ---
+bool isAlarmActive = false;
+bool notificationSent = false; // Prevents sending multiple messages for one event
+unsigned long lastAlarmTime = 0;
+const unsigned long ALARM_DURATION_MS = 10000; // Buzzer sounds for 10 seconds
+const unsigned long DEBOUNCE_DELAY_MS = 50;    // Small delay to handle switch bounce
+
+// --- Function Declarations ---
+void connectToWiFi();
+void checkWaterLevel();
+void triggerAlarm();
+void silenceAlarm();
+void sendIftttNotification(const String& message);
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("\n--- Water Level Monitor Booting ---");
+
+  // Initialize Pins
+  // SENSOR_PIN is set to INPUT_PULLUP.
+  pinMode(SENSOR_PIN, INPUT_PULLUP);
+  // BUZZER_PIN is an output. Start LOW (Buzzer OFF).
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  connectToWiFi();
+}
+
+void loop() {
+  // Keep the Wi-Fi connection alive
+  if (WiFi.status() != WL_CONNECTED) {
+    connectToWiFi();
+  }
+
+  // Continuously check the water level sensor
+  checkWaterLevel();
+
+  // Handle the active alarm state
+  if (isAlarmActive) {
+    // Check if the alarm duration has passed
+    if (millis() - lastAlarmTime >= ALARM_DURATION_MS) {
+      // Don't silence the alarm if the water level is STILL low, just silence the buzzer for a period
+      // For simplicity here, we silence the buzzer after the duration
+      digitalWrite(BUZZER_PIN, LOW);
+      isAlarmActive = false; // Allow re-triggering the alarm if the sensor is still low later
+    }
+  }
+}
+
+/**
+ * @brief Attempts to connect to the configured Wi-Fi network.
+ */
+void connectToWiFi() {
+  if (WiFi.status() == WL_CONNECTED) return;
+
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(ssid);
+  WiFi.mode(WIFI_STA); // Set device as a Wi-Fi station
+  WiFi.begin(ssid, password);
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nConnected to WiFi!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\nFailed to connect to WiFi. Will retry in loop.");
+  }
+}
+
+/**
+ * @brief Reads the sensor pin and determines if the alarm should be triggered.
+ */
+void checkWaterLevel() {
+  // Read the state of the sensor pin (GPIO14)
+  // LOW (0V) means the sensor is activated (e.g., water level is LOW/empty)
+  int sensorState = digitalRead(SENSOR_PIN);
+
+  if (sensorState == LOW) {
+    // Water level is LOW (sensor activated)
+    if (!notificationSent) {
+      // Trigger the alarm and notification only once per low-level event
+      delay(DEBOUNCE_DELAY_MS); // Simple debouncing
+      if (digitalRead(SENSOR_PIN) == LOW) { // Re-check after debounce
+        triggerAlarm();
+        sendIftttNotification("EMERGENCY: Water level is critically LOW! Check the tank immediately.");
+        notificationSent = true;
+      }
+    }
+  } else {
+    // Water level is HIGH (sensor deactivated)
+    if (notificationSent) {
+      // Reset the notificationSent flag when the level is restored
+      Serial.println("Water level restored. System reset.");
+      notificationSent = false;
+      silenceAlarm();
+    }
+  }
+}
+
+/**
+ * @brief Turns the buzzer ON and updates the alarm state.
+ */
+void triggerAlarm() {
+  isAlarmActive = true;
+  lastAlarmTime = millis();
+  // Setting GPIO13 HIGH turns the NPN transistor ON, driving the buzzer.
+  digitalWrite(BUZZER_PIN, HIGH);
+  Serial.println("!!! LOCAL BUZZER ALARM TRIGGERED !!!");
+}
+
+/**
+ * @brief Turns the buzzer OFF and updates the alarm state.
+ */
+void silenceAlarm() {
+  isAlarmActive = false;
+  // Setting GPIO13 LOW turns the NPN transistor OFF, silencing the buzzer.
+  digitalWrite(BUZZER_PIN, LOW);
+  // Do NOT reset notificationSent here, it should only reset when water level is restored.
+}
+
+/**
+ * @brief Sends a simple notification via IFTTT Webhooks service.
+ * @param message The text content of the notification.
+ */
+void sendIftttNotification(const String& message) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected. Cannot send notification.");
+    return;
+  }
+
+  // Build the full URL: http://maker.ifttt.com/trigger/{event_name}/with/key/{IFTTT_KEY}
+  // We use the 'value1' field to send the message text.
+  String url = IFTTT_URL_BASE + IFTTT_EVENT_NAME + "/with/key/" + IFTTT_KEY;
+  url += "?value1=" + message;
+
+  Serial.print("Sending IFTTT notification to: ");
+  Serial.println(url);
+
+  HTTPClient http;
+
+  // Begin connection to IFTTT server
+  if (http.begin(url)) {
+    int httpCode = http.GET();
+
+    if (httpCode > 0) {
+      // HTTP header has been send and server response header has been handled
+      Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+      if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+        String payload = http.getString();
+        Serial.println(payload);
+      }
+    } else {
+      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+    }
+
+    http.end(); // Close connection
+  } else {
+    Serial.println("[HTTP] Unable to connect to IFTTT.");
+  }
+}
