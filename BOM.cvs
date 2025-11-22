@@ -1,0 +1,19 @@
+Reference,Value,Footprint,Quantity,Part Type
+U1,ESP-12F,RF_Module:ESP-12E,1,Wi-Fi Module
+U2,AMS1117-3.3,Package_TO_SOT_SMD:SOT-223-3_TabPin2,1,LDO Regulator
+Q1,S8050,Package_TO_SOT_SMD:SOT-23,1,NPN Transistor
+C2,10uF,Capacitor_SMD:C_0805_2012Metric,1,Decoupling Capacitor
+C3,10uF,Capacitor_SMD:C_0805_2012Metric,1,Decoupling Capacitor
+C4,100nF,Capacitor_SMD:C_0805_2012Metric,1,Decoupling/Debounce Capacitor
+R1,10K,Resistor_SMD:R_0805_2012Metric,1,Pull-up Resistor (Sensor)
+R2,10K,Resistor_SMD:R_0805_2012Metric,1,Pull-up Resistor (GPIO2)
+R3,10K,Resistor_SMD:R_0805_2012Metric,1,Pull-down Resistor (GPIO15)
+R4,10K,Resistor_SMD:R_0805_2012Metric,1,Pull-up Resistor (RST)
+R5,10K,Resistor_SMD:R_0805_2012Metric,1,Pull-up Resistor (GPIO0)
+R6,1K,Resistor_SMD:R_0805_2012Metric,1,Current Limiting Resistor (Transistor Base)
+SW1,Reset,Button_Switch_SMD:SW_SPST_TL3342,1,Tactile Switch
+SW2,Flash,Button_Switch_SMD:SW_SPST_TL3342,1,Tactile Switch
+BZ1,Buzzer,Buzzer_Beeper:Buzzer_12x9.5RM7.6,1,Acoustic Alarm
+J1,Terminal Block,TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1.5-2_1x02_P5.00mm_Horizontal,1,Sensor Input Connector
+J2,Terminal Block,TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1.5-2_1x02_P5.00mm_Horizontal,1,Power Input Connector
+J3,Header,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,1,Programming Header
